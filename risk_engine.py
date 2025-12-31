@@ -3,252 +3,153 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-# IMPORT PREMIUM LOGIC
-from premium_rules import calculate_final_premium
-
-
-# --------------------------------------------------
+# -----------------------------
 # Paths
-# --------------------------------------------------
+# -----------------------------
 BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BASE_DIR / "models"
 
 EBM_PATH = MODELS_DIR / "ebm_risk.pkl"
 NGB_PATH = MODELS_DIR / "ngboost_risk_bundle.pkl"
 
+# -----------------------------
+# FINAL RISK THRESHOLDS (REALISTIC)
+# -----------------------------
+EBM_ESCALATE_THRESHOLD = 0.25   # MEDIUM
+EBM_HIGH_THRESHOLD = 0.45       # HIGH
 
-# --------------------------------------------------
-# Thresholds (from your experiments – NOT guessed)
-# --------------------------------------------------
-EBM_ESCALATE_THRESHOLD = 0.155   # cost-based
-EBM_HIGH_THRESHOLD     = 0.20    # F1-based
+# -----------------------------
+# Blacklist
+# -----------------------------
+BLACKLIST_SET = {"BLK001", "BLK002", "BLACK123"}
 
+def is_blacklisted(customer_id: str) -> bool:
+    if not customer_id:
+        return False
+    return customer_id.strip().upper() in BLACKLIST_SET
 
-# --------------------------------------------------
+# -----------------------------
 # Load models
-# --------------------------------------------------
+# -----------------------------
 ebm_model = joblib.load(EBM_PATH)
 
 ngb_bundle = joblib.load(NGB_PATH)
 ngb_model = ngb_bundle["model"]
-ngb_features = ngb_bundle["feature_columns"]
+ngb_features = list(ngb_bundle["feature_columns"])
 
+# -----------------------------
+# Feature helpers
+# -----------------------------
+def _driver_age_band(age):
+    if age < 25: return "18-24"
+    if age < 35: return "25-34"
+    if age < 45: return "35-44"
+    if age < 55: return "45-54"
+    if age < 65: return "55-64"
+    return "65+"
 
-# --------------------------------------------------
-# Get EBM trained feature list (CRITICAL)
-# --------------------------------------------------
-if hasattr(ebm_model, "feature_names_in_"):
-    ebm_features = list(ebm_model.feature_names_in_)
-elif hasattr(ebm_model, "feature_names_"):
-    ebm_features = list(ebm_model.feature_names_)
-else:
-    raise RuntimeError("Cannot find feature names in EBM model.")
+def _vehicle_age_band(age):
+    if age <= 3: return "0-3"
+    if age <= 7: return "4-7"
+    if age <= 12: return "8-12"
+    if age <= 20: return "13-20"
+    return "20+"
 
-
-# --------------------------------------------------
-# Age band rules (MUST MATCH training dataset)
-# --------------------------------------------------
-def make_driver_age_band(age):
-    age = float(age)
-    if age < 25:
-        return "18_24"
-    elif age < 35:
-        return "25_34"
-    elif age < 45:
-        return "35_44"
-    elif age < 60:
-        return "45_59"
-    else:
-        return "60+"
-
-
-def make_vehicle_age_band(v_age):
-    v_age = float(v_age)
-    if v_age <= 3:
-        return "0_3"
-    elif v_age <= 7:
-        return "4_7"
-    elif v_age <= 12:
-        return "8_12"
-    else:
-        return "13+"
-
-
-# --------------------------------------------------
-# Helpers
-# --------------------------------------------------
-def to_dataframe(policy_dict):
-    return pd.DataFrame([policy_dict])
-
-
-def add_engineered_features(df):
-    # Guard checks
-    if "driver_age" not in df.columns:
-        raise ValueError("Missing required field: driver_age")
-    if "vehicle_age_years" not in df.columns:
-        raise ValueError("Missing required field: vehicle_age_years")
-
-    # Create bands
-    df["driver_age_band"] = df["driver_age"].apply(make_driver_age_band)
-    df["vehicle_age_band"] = df["vehicle_age_years"].apply(make_vehicle_age_band)
-    return df
-
-
-def prepare_for_ebm(df):
-    missing = [c for c in ebm_features if c not in df.columns]
-    if missing:
-        raise ValueError(f"Missing required EBM features: {missing}")
-    return df[ebm_features]
-
-
-def encode_for_ngboost(df):
-    X = pd.get_dummies(df, drop_first=False)
-    X = X.reindex(columns=ngb_features, fill_value=0)
-    return X
-
-
-# --------------------------------------------------
-# MAIN RISK + PREMIUM FUNCTION
-# --------------------------------------------------
-def calculate_risk(policy):
-    """
-    Input : policy data (dict)
-    Output: risk + premium breakdown
-    """
-
-    # 1) Input → DataFrame
-    df = to_dataframe(policy)
-
-    # 2) Feature engineering for EBM (bands)
-    df = add_engineered_features(df)
-
-    # 3) EBM risk prediction
-    X_ebm = prepare_for_ebm(df)
-    ebm_prob = float(ebm_model.predict_proba(X_ebm)[0, 1])
-
-    # 4) Risk label using EBM (for workflow/decision)
-    if ebm_prob >= EBM_HIGH_THRESHOLD:
-        risk_label = "HIGH"
-    elif ebm_prob >= EBM_ESCALATE_THRESHOLD:
-        risk_label = "MEDIUM"
-    else:
-        risk_label = "LOW"
-
-    escalate = ebm_prob >= EBM_ESCALATE_THRESHOLD
-
-    # Result skeleton
-    result = {
-        "ebm_risk_probability": round(ebm_prob, 4),
-        "risk_label": risk_label,
-        "escalate_to_ngboost": bool(escalate),
-
-        "ngboost_risk_probability": None,
-        "ngboost_uncertainty": None,
-
-        "driver_age_band": df["driver_age_band"].iloc[0],
-        "vehicle_age_band": df["vehicle_age_band"].iloc[0],
-
-        # will be filled after choosing pricing probability
-        "pricing_model_used": None,
-        "pricing_probability": None,
-        "risk_percent_for_pricing": None,
-        "premium_breakdown": None
-    }
-
-    # 5) NGBoost (only if escalated)
-    if escalate:
-        X_ngb = encode_for_ngboost(df)
-        dist = ngb_model.pred_dist(X_ngb)
-        params = dist.params if hasattr(dist, "params") else dist.params_
-
-        p1 = float(np.asarray(params["p1"]).reshape(-1)[0])  # claim probability
-        uncertainty = float(np.sqrt(p1 * (1 - p1)))
-
-        result["ngboost_risk_probability"] = round(p1, 4)
-        result["ngboost_uncertainty"] = round(uncertainty, 4)
-
-    # 6) Choose probability for PREMIUM (your required rule)
-    if result["ngboost_risk_probability"] is not None:
-        pricing_prob = float(result["ngboost_risk_probability"])
-        pricing_model_used = "NGBoost"
-    else:
-        pricing_prob = float(result["ebm_risk_probability"])
-        pricing_model_used = "EBM"
-
-    risk_percent_for_pricing = pricing_prob * 100.0
-
-    result["pricing_model_used"] = pricing_model_used
-    result["pricing_probability"] = round(pricing_prob, 4)
-    result["risk_percent_for_pricing"] = round(risk_percent_for_pricing, 2)
-
-    # 7) Premium calculation (RULE BASED)
-    # Prefer using base_premium from input policy if provided
-    base_premium = float(policy.get("base_premium", 45000))
-
-    premium_breakdown = calculate_final_premium(
-        base_premium=base_premium,
-        risk_percent=risk_percent_for_pricing,
-        ncb_percentage=float(policy.get("ncb_percentage", 0)),
-        other_discount=float(policy.get("other_discount", 0))
-    )
-
-    result["premium_breakdown"] = premium_breakdown
-
-    return result
-
-
-# --------------------------------------------------
-# Example run
-# --------------------------------------------------
-if __name__ == "__main__":
-
-    sample_policy = {
-        "driver_age": 23,
+# -----------------------------
+# Defaults
+# -----------------------------
+def _defaults(d):
+    base = {
+        "driver_age": 35,
         "driver_gender": "Male",
         "driver_occupation": "Private",
-        "years_of_driving_experience": 2,
+        "years_of_driving_experience": 10,
         "member_automobile_assoc_ceylon": 0,
         "has_previous_motor_policy": 0,
+        "accidents_last_3_years": 0,
         "ncb_percentage": 0,
-        "accidents_last_3_years": 2,
-
+        "num_claims_within_1_year": 0,
         "vehicle_type": "Car",
-        "vehicle_segment": "Hatchback",
-        "engine_capacity_cc": 1800,
+        "vehicle_segment": "Sedan",
+        "engine_capacity_cc": 1500,
         "fuel_type": "Petrol",
-        "vehicle_age_years": 18,
-        "vehicle_usage_type": "Commercial",
+        "vehicle_age_years": 8,
+        "vehicle_usage_type": "Private",
         "registration_district": "Colombo",
-        "parking_type": "Road",
-        "has_lpg_conversion": 1,
-
-        "vehicle_make": "TOYOTA",
-        "vehicle_model": "Starlet",
-        "images_uploaded": 0,
-        "inspection_report_uploaded": 0,
-        "registration_book_available": 0,
-        "rebate_within_company_limits": 0,
-        "is_existing_customer": 0,
-        "is_blacklisted_customer": 1,
-
-        "coverage_type": "Third Party",
-        "approx_market_value": 2200000,
-        "sum_insured": 2000000,
-        "num_claims_within_1_year": 1,
-        "total_claim_amount_within_1_year": 450000,
-
-        # optional pricing inputs
-        "base_premium": 45000,
-        "other_discount": 0
+        "parking_type": "Garage",
+        "has_lpg_conversion": 0,
+        "customer_id": ""
     }
+    for k, v in base.items():
+        d.setdefault(k, v)
+    return d
 
-    output = calculate_risk(sample_policy)
+# -----------------------------
+# Prepare data
+# -----------------------------
+def _prepare_df(inp):
+    inp = _defaults(dict(inp))
+    df = pd.DataFrame([inp])
+    df["driver_age_band"] = df["driver_age"].apply(_driver_age_band)
+    df["vehicle_age_band"] = df["vehicle_age_years"].apply(_vehicle_age_band)
+    return df
 
-    print("\nFINAL OUTPUT")
-    for k, v in output.items():
-        if k == "premium_breakdown" and isinstance(v, dict):
-            print("premium_breakdown:")
-            for pk, pv in v.items():
-                print(f"  {pk}: {pv}")
-        else:
-            print(f"{k}: {v}")
+def _prepare_for_ebm(df):
+    X = df[ebm_model.feature_names_in_].copy()
+    for c in X.columns:
+        if X[c].dtype == "object":
+            X[c] = X[c].astype(str)
+    return X
+
+def _prepare_for_ngb(df):
+    X = pd.get_dummies(df, drop_first=False)
+    for col in ngb_features:
+        if col not in X.columns:
+            X[col] = 0
+    return X[ngb_features]
+
+# -----------------------------
+# NGBoost probability (SAFE)
+# -----------------------------
+def _ngb_prob(X):
+    if hasattr(ngb_model, "predict_proba"):
+        p = np.asarray(ngb_model.predict_proba(X))
+        return float(p[0, -1])
+    dist = ngb_model.pred_dist(X)
+    return float(np.asarray(dist.probs)[0, -1])
+
+# -----------------------------
+# Risk label
+# -----------------------------
+def _risk_label(p):
+    if p >= EBM_HIGH_THRESHOLD:
+        return "HIGH"
+    if p >= EBM_ESCALATE_THRESHOLD:
+        return "MEDIUM"
+    return "LOW"
+
+# -----------------------------
+# FINAL RISK FUNCTION
+# -----------------------------
+def calculate_risk(input_policy: dict) -> dict:
+    df = _prepare_df(input_policy)
+
+    ebm_prob = float(
+        ebm_model.predict_proba(_prepare_for_ebm(df))[:, 1][0]
+    )
+
+    ngb_prob = _ngb_prob(_prepare_for_ngb(df))
+
+    # ⭐ REAL UNDERWRITING LOGIC ⭐
+    final_prob = ebm_prob
+
+    # Escalate ONLY if both models agree
+    if ngb_prob >= 0.80 and ebm_prob >= EBM_ESCALATE_THRESHOLD:
+        final_prob = max(ebm_prob, ngb_prob)
+
+    return {
+        "risk_probability": final_prob,
+        "risk_label": _risk_label(final_prob),
+        "ebm_probability": ebm_prob,
+        "ngboost_probability": ngb_prob
+    }
