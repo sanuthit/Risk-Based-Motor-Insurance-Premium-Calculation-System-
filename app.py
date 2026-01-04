@@ -64,6 +64,10 @@ if "result" not in st.session_state:
 if "blacklisted" not in st.session_state:
     st.session_state.blacklisted = False
 
+# IMPORTANT: init widget state ONCE (no 'value=' in widget)
+if "years_of_driving_experience" not in st.session_state:
+    st.session_state.years_of_driving_experience = 10
+
 # --------------------------------------------------
 # Input Form
 # --------------------------------------------------
@@ -73,17 +77,33 @@ with st.form("risk_form"):
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        driver_age = st.number_input("Driver Age", 18, 90, 35)
+        driver_age = st.number_input("Driver Age", 18, 90, 35, step=1)
         driver_gender = st.selectbox("Driver Gender", ["Male", "Female"])
+
+    # Dynamic max experience based on license age
+    MIN_LICENSE_AGE = 18
+    max_exp = max(int(driver_age) - MIN_LICENSE_AGE, 0)
+
+    # If user previously selected a value that is now invalid, auto-correct it
+    if st.session_state.years_of_driving_experience > max_exp:
+        st.session_state.years_of_driving_experience = max_exp
 
     with c2:
         driver_occupation = st.selectbox(
             "Driver Occupation",
             ["Private", "Government", "Self-employed", "Student", "Unemployed", "Other"]
         )
+
+        # ✅ FIX: remove 'value=' because we already use session state via key
         years_of_driving_experience = st.number_input(
-            "Years of Driving Experience", 0, 70, 10
+            "Years of Driving Experience",
+            min_value=0,
+            max_value=max_exp,
+            step=1,
+            help=f"Max allowed = {max_exp} (Age {driver_age} - {MIN_LICENSE_AGE})",
+            key="years_of_driving_experience"
         )
+        st.caption(f"Maximum possible experience for age {driver_age}: {max_exp} years")
 
     with c3:
         member_automobile_assoc_ceylon = st.selectbox(
@@ -102,7 +122,7 @@ with st.form("risk_form"):
 
     with c2:
         accidents_last_3_years = st.number_input(
-            "Accidents (Last 3 Years)", 0, 10, 0
+            "Accidents (Last 3 Years)", 0, 10, 0, step=1
         )
 
     with c3:
@@ -112,7 +132,7 @@ with st.form("risk_form"):
 
     with c4:
         num_claims_within_1_year = st.number_input(
-            "Claims (Last Year)", 0, 10, 0
+            "Claims (Last Year)", 0, 10, 0, step=1
         )
 
     st.subheader("🚙 Vehicle Details")
@@ -128,7 +148,7 @@ with st.form("risk_form"):
             ["Sedan", "Hatchback", "Wagon", "Pickup", "MPV", "Other"]
         )
         engine_capacity_cc = st.number_input(
-            "Engine Capacity (cc)", 50, 8000, 1500
+            "Engine Capacity (cc)", 50, 8000, 1500, step=10
         )
 
     with c2:
@@ -137,7 +157,7 @@ with st.form("risk_form"):
             ["Petrol", "Diesel", "Hybrid", "Electric", "Other"]
         )
         vehicle_age_years = st.number_input(
-            "Vehicle Age (Years)", 0, 60, 8
+            "Vehicle Age (Years)", 0, 60, 8, step=1
         )
         vehicle_usage_type = st.selectbox(
             "Usage Type",
@@ -169,24 +189,24 @@ with st.form("risk_form"):
 if submit:
 
     input_policy = {
-        "driver_age": driver_age,
+        "driver_age": int(driver_age),
         "driver_gender": driver_gender,
         "driver_occupation": driver_occupation,
-        "years_of_driving_experience": years_of_driving_experience,
-        "member_automobile_assoc_ceylon": member_automobile_assoc_ceylon,
-        "has_previous_motor_policy": has_previous_motor_policy,
-        "accidents_last_3_years": accidents_last_3_years,
-        "ncb_percentage": ncb_percentage,
-        "num_claims_within_1_year": num_claims_within_1_year,
+        "years_of_driving_experience": int(st.session_state.years_of_driving_experience),
+        "member_automobile_assoc_ceylon": int(member_automobile_assoc_ceylon),
+        "has_previous_motor_policy": int(has_previous_motor_policy),
+        "accidents_last_3_years": int(accidents_last_3_years),
+        "ncb_percentage": int(ncb_percentage),
+        "num_claims_within_1_year": int(num_claims_within_1_year),
         "vehicle_type": vehicle_type,
         "vehicle_segment": vehicle_segment,
-        "engine_capacity_cc": engine_capacity_cc,
+        "engine_capacity_cc": int(engine_capacity_cc),
         "fuel_type": fuel_type,
-        "vehicle_age_years": vehicle_age_years,
+        "vehicle_age_years": int(vehicle_age_years),
         "vehicle_usage_type": vehicle_usage_type,
         "registration_district": registration_district,
         "parking_type": parking_type,
-        "has_lpg_conversion": has_lpg_conversion,
+        "has_lpg_conversion": int(has_lpg_conversion),
         "customer_id": customer_id.strip(),
     }
 
@@ -212,7 +232,6 @@ elif st.session_state.result:
     risk_pct = r["risk_probability"] * 100
     label = r["risk_label"].lower()
 
-    # MAIN RESULT (HIGHLIGHTED)
     st.markdown(
         f"""
         <div class="risk-box risk-{label}">
@@ -223,7 +242,6 @@ elif st.session_state.result:
         unsafe_allow_html=True
     )
 
-    # SECONDARY MODEL INFO
     c1, c2 = st.columns(2)
 
     with c1:
