@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Renewal Risk + Premium</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .card { border: 1px solid #ddd; padding: 16px; border-radius: 10px; max-width: 520px; }
+    input { padding: 8px; width: 240px; margin: 6px 0; }
+    button { padding: 10px 14px; cursor: pointer; }
+    pre { background: #f7f7f7; padding: 12px; border-radius: 8px; overflow:auto; }
+  </style>
+</head>
+<body>
+
+  <h2>Renewal Risk Score & Premium Calculator</h2>
+
+  <div class="card">
+    <form action="/predict" method="POST">
+      <div class="row">
+        <div>
+          <label>Sum Insured</label><br/>
+          <input name="sum_insured" placeholder="e.g., 5000000" required />
+        </div>
+
+        <div>
+          <label>NCB Rate</label><br/>
+          <input name="ncb_rate" placeholder="e.g., 0.20 for 20%" />
+        </div>
+      </div>
+
+      <hr/>
+
+      <!-- ✅ Put your feature inputs here.
+           These input "name" values MUST match your model's feature_columns.
+           Example names below (change to your real columns). -->
+
+      <div class="row">
+        <div>
+          <label>claims_last_1_year</label><br/>
+          <input name="claims_last_1_year" placeholder="e.g., 2" />
+        </div>
+        <div>
+          <label>total_claim_amount_last_1_year</label><br/>
+          <input name="total_claim_amount_last_1_year" placeholder="e.g., 500000" />
+        </div>
+        <div>
+          <label>largest_claim_amount_last_1_year</label><br/>
+          <input name="largest_claim_amount_last_1_year" placeholder="e.g., 300000" />
+        </div>
+        <div>
+          <label>years_since_last_claim</label><br/>
+          <input name="years_since_last_claim" placeholder="e.g., 1.2" />
+        </div>
+      </div>
+
+      <br/>
+      <button type="submit">Predict</button>
+    </form>
+  </div>
+
+  {% if result %}
+    <div class="card" style="margin-top:16px;">
+      <h3>Result</h3>
+      <p><b>Expected Claim Amount:</b> {{ result.expected_claim_amount }}</p>
+      <p><b>Risk Score:</b> {{ result.risk_score }} / 100</p>
+
+      <h4>Premium Breakdown</h4>
+      <pre>{{ result.premium_breakdown }}</pre>
+    </div>
+  {% endif %}
+
+</body>
+</html>
