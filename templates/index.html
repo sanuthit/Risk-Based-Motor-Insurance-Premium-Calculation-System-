@@ -1,75 +1,110 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Renewal Risk + Premium</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Renewal Risk + Premium Predictor</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    .row { display: flex; gap: 16px; flex-wrap: wrap; }
-    .card { border: 1px solid #ddd; padding: 16px; border-radius: 10px; max-width: 520px; }
-    input { padding: 8px; width: 240px; margin: 6px 0; }
-    button { padding: 10px 14px; cursor: pointer; }
-    pre { background: #f7f7f7; padding: 12px; border-radius: 8px; overflow:auto; }
+    body { font-family: Arial, sans-serif; margin: 28px; }
+    .card { max-width: 760px; padding: 18px; border: 1px solid #ddd; border-radius: 10px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    label { font-weight: 600; font-size: 14px; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #bbb; border-radius: 8px; }
+    .full { grid-column: 1 / -1; }
+    button { padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer; }
+    .btn { background: #111827; color: white; }
+    .hint { font-size: 12px; color: #555; margin-top: 6px; }
+    .result { margin-top: 18px; padding: 14px; background: #f6f7f9; border-radius: 10px; }
+    pre { white-space: pre-wrap; word-wrap: break-word; background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb; }
+    .big { font-size: 22px; font-weight: 800; }
   </style>
 </head>
 <body>
 
-  <h2>Renewal Risk Score & Premium Calculator</h2>
-
   <div class="card">
-    <form action="/predict" method="POST">
-      <div class="row">
+    <h2>Renewal Risk + Premium Predictor</h2>
+    <p class="hint">
+      Enter claim history and policy values. Premium is the final output.
+    </p>
+
+    <form method="POST" action="/predict">
+      <div class="grid">
+
+        <!-- Sum insured -->
+        <div class="full">
+          <label for="sum_insured">Sum Insured (LKR)</label>
+          <input type="number" step="0.01" name="sum_insured" id="sum_insured" placeholder="e.g., 5000000" required>
+        </div>
+
+        <!-- Claim frequency -->
         <div>
-          <label>Sum Insured</label><br/>
-          <input name="sum_insured" placeholder="e.g., 5000000" required />
+          <label for="claims_last_1_year">Claims in last 1 year</label>
+          <input type="number" step="1" min="0" name="claims_last_1_year" id="claims_last_1_year" value="0" required>
         </div>
 
         <div>
-          <label>NCB Rate</label><br/>
-          <input name="ncb_rate" placeholder="e.g., 0.20 for 20%" />
+          <label for="claims_last_3_years">Claims in last 3 years</label>
+          <input type="number" step="1" min="0" name="claims_last_3_years" id="claims_last_3_years" value="0" required>
         </div>
+
+        <!-- Severity -->
+        <div class="full">
+          <label for="largest_claim_amount_last_1_year">Largest claim amount (last 1 year) - LKR</label>
+          <input type="number" step="0.01" min="0" name="largest_claim_amount_last_1_year"
+                 id="largest_claim_amount_last_1_year" value="0" required>
+        </div>
+
+        <!-- Major claim (Yes/No) -->
+        <div>
+          <label for="had_major_claim_last_1_year">Had major claim in last 1 year?</label>
+          <select name="had_major_claim_last_1_year" id="had_major_claim_last_1_year" required>
+            <option value="0" selected>No</option>
+            <option value="1">Yes</option>
+          </select>
+        </div>
+
+        <!-- Small frequent (Yes/No) -->
+        <div>
+          <label for="small_frequent_claims_flag">Small + frequent claims pattern?</label>
+          <select name="small_frequent_claims_flag" id="small_frequent_claims_flag" required>
+            <option value="0" selected>No</option>
+            <option value="1">Yes</option>
+          </select>
+        </div>
+
+        <!-- Recency -->
+        <div class="full">
+          <label for="years_since_last_claim">Years since last claim</label>
+          <input type="number" step="0.01" min="0" name="years_since_last_claim" id="years_since_last_claim"
+                 value="3.0" required>
+          <div class="hint">Example: 0.2 = recent claim, 5.0 = long ago, 999 = never claimed (NCB-like)</div>
+        </div>
+
+        <div class="full">
+          <button class="btn" type="submit">Predict</button>
+        </div>
+
       </div>
-
-      <hr/>
-
-      <!-- ✅ Put your feature inputs here.
-           These input "name" values MUST match your model's feature_columns.
-           Example names below (change to your real columns). -->
-
-      <div class="row">
-        <div>
-          <label>claims_last_1_year</label><br/>
-          <input name="claims_last_1_year" placeholder="e.g., 2" />
-        </div>
-        <div>
-          <label>total_claim_amount_last_1_year</label><br/>
-          <input name="total_claim_amount_last_1_year" placeholder="e.g., 500000" />
-        </div>
-        <div>
-          <label>largest_claim_amount_last_1_year</label><br/>
-          <input name="largest_claim_amount_last_1_year" placeholder="e.g., 300000" />
-        </div>
-        <div>
-          <label>years_since_last_claim</label><br/>
-          <input name="years_since_last_claim" placeholder="e.g., 1.2" />
-        </div>
-      </div>
-
-      <br/>
-      <button type="submit">Predict</button>
     </form>
+
+    {% if result %}
+  <div class="result">
+
+    <h2>Total Premium Payable</h2>
+    <h1>LKR {{ result.total_premium }}</h1>
+
+    <p><b>Risk Score:</b> {{ result.risk_score }} / 100</p>
+
+    <details>
+      <summary><b>Premium Breakdown</b></summary>
+      <pre>{{ result.premium_breakdown }}</pre>
+    </details>
+
   </div>
 
-  {% if result %}
-    <div class="card" style="margin-top:16px;">
-      <h3>Result</h3>
-      <p><b>Expected Claim Amount:</b> {{ result.expected_claim_amount }}</p>
-      <p><b>Risk Score:</b> {{ result.risk_score }} / 100</p>
+    {% endif %}
 
-      <h4>Premium Breakdown</h4>
-      <pre>{{ result.premium_breakdown }}</pre>
-    </div>
-  {% endif %}
+  </div>
 
 </body>
 </html>

@@ -1,46 +1,31 @@
 from flask import Flask, render_template, request
-from renewal_risk_engine import RenewalRiskEngine
+from renewal_risk_engine import evaluate_policy
 
 app = Flask(__name__)
 
-engine = RenewalRiskEngine()
-
 
 @app.route("/", methods=["GET"])
-def home():
+def index():
     return render_template("index.html")
 
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    # --- Read basic inputs ---
-    sum_insured = float(request.form.get("sum_insured", 0) or 0)
-    ncb_rate = float(request.form.get("ncb_rate", 0) or 0)  # % or decimal? depends on your premium_rules
+    policy_features = {
+        "claims_last_1_year": float(request.form["claims_last_1_year"]),
+        "claims_last_3_years": float(request.form["claims_last_3_years"]),
+        "largest_claim_amount_last_1_year": float(request.form["largest_claim_amount_last_1_year"]),
+        "had_major_claim_last_1_year": int(request.form["had_major_claim_last_1_year"]),
+        "small_frequent_claims_flag": int(request.form["small_frequent_claims_flag"]),
+        "years_since_last_claim": float(request.form["years_since_last_claim"]),
+    }
 
-    # --- Build policy_features dict from form ---
-    # IMPORTANT: These keys MUST match engine.features (training columns).
-    # We'll collect everything from the form except sum_insured & ncb_rate.
-    policy_features = {}
+    sum_insured = float(request.form["sum_insured"])
 
-    for k, v in request.form.items():
-        if k in ["sum_insured", "ncb_rate"]:
-            continue
-
-        # Try numeric conversion; otherwise keep as string
-        try:
-            policy_features[k] = float(v)
-        except:
-            policy_features[k] = v
-
-    # --- Evaluate policy ---
-    result = engine.evaluate_policy(
-        policy_features=policy_features,
-        sum_insured=sum_insured,
-        ncb_rate=ncb_rate
-    )
+    result = evaluate_policy(policy_features, sum_insured)
 
     return render_template("index.html", result=result)
-
+    
 
 if __name__ == "__main__":
     app.run(debug=True)
