@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="content-wrap">
+  <!-- LEFT -->
+  <section class="content-main">
+
+    <div class="card soft-card p-3 mb-3">
+      <h5 class="mb-1">New Customer Registration</h5>
+      <div class="text-muted">Enter customer identity → risk factors → generate risk & premium.</div>
+    </div>
+
+    {% if errors.get("model") %}
+      <div class="alert alert-danger soft-card">{{ errors.get("model") }}</div>
+    {% endif %}
+
+    <form method="POST" action="/calculate" class="card soft-card p-3">
+
+      <!-- CUSTOMER -->
+      <h6 class="mb-2"><i class="bi bi-person-vcard me-2"></i>Customer Identity</h6>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Full Name</label>
+          <input class="form-control" name="full_name" value="{{ form.get('full_name','') }}" placeholder="Eg: Nimal Perera">
+          {% if errors.get("full_name") %}<div class="field-error">{{ errors.get("full_name") }}</div>{% endif %}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">NIC</label>
+          <input class="form-control" name="nic" value="{{ form.get('nic','') }}" placeholder="Eg: 200012345678 / 123456789V">
+          {% if errors.get("nic") %}<div class="field-error">{{ errors.get("nic") }}</div>{% endif %}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Customer ID (optional)</label>
+          <input class="form-control" name="customer_id" value="{{ form.get('customer_id','') }}" placeholder="Eg: BLK001">
+          {% if errors.get("customer_id") %}<div class="field-error">{{ errors.get("customer_id") }}</div>{% endif %}
+        </div>
+      </div>
+
+      <hr class="my-3"/>
+
+      <!-- PREMIUM INPUTS -->
+      <h6 class="mb-2"><i class="bi bi-cash-coin me-2"></i>Premium Inputs</h6>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Base Premium (LKR)</label>
+          <input class="form-control" type="number" step="0.01" name="base_premium" value="{{ form.get('base_premium','140825') }}">
+          {% if errors.get("base_premium") %}<div class="field-error">{{ errors.get("base_premium") }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Other Discount (LKR)</label>
+          <input class="form-control" type="number" step="0.01" name="other_discount" value="{{ form.get('other_discount','0') }}">
+        </div>
+      </div>
+
+      <hr class="my-3"/>
+
+      <!-- DRIVER -->
+      <h6 class="mb-2"><i class="bi bi-person-badge me-2"></i>Driver Details</h6>
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Driver Age</label>
+          <input class="form-control" id="driver_age" type="number" min="18" max="90" step="1"
+                 name="driver_age" value="{{ form.get('driver_age','35') }}">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Driver Gender</label>
+          {% set g = form.get('driver_gender','Male') %}
+          <select class="form-select" name="driver_gender">
+            <option {{ 'selected' if g=='Male' else '' }}>Male</option>
+            <option {{ 'selected' if g=='Female' else '' }}>Female</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Occupation</label>
+          {% set occ = form.get('driver_occupation','Private') %}
+          <select class="form-select" name="driver_occupation">
+            {% for o in ['Private','Government','Self-employed','Student','Unemployed','Other'] %}
+              <option {{ 'selected' if occ==o else '' }}>{{ o }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Years of Driving Experience</label>
+          <input class="form-control" id="driving_exp" type="number" min="0" max="70" step="1"
+                 name="years_of_driving_experience"
+                 value="{{ form.get('years_of_driving_experience','10') }}">
+          <div class="text-muted small mt-1" id="exp_help"></div>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">AAC Membership</label>
+          {% set aac = form.get('member_automobile_assoc_ceylon','0') %}
+          <select class="form-select" name="member_automobile_assoc_ceylon">
+            <option value="0" {{ 'selected' if aac=='0' else '' }}>No</option>
+            <option value="1" {{ 'selected' if aac=='1' else '' }}>Yes</option>
+          </select>
+        </div>
+      </div>
+
+      <hr class="my-3"/>
+
+      <!-- HISTORY -->
+      <h6 class="mb-2"><i class="bi bi-journal-text me-2"></i>Insurance History</h6>
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Previous Motor Policy</label>
+          {% set prev = form.get('has_previous_motor_policy','0') %}
+          <select class="form-select" name="has_previous_motor_policy">
+            <option value="0" {{ 'selected' if prev=='0' else '' }}>No</option>
+            <option value="1" {{ 'selected' if prev=='1' else '' }}>Yes</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Accidents (Last 3 Years)</label>
+          <input class="form-control" type="number" min="0" max="10" step="1"
+                 name="accidents_last_3_years" value="{{ form.get('accidents_last_3_years','0') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">NCB %</label>
+          {% set ncb = form.get('ncb_percentage','0') %}
+          <select class="form-select" name="ncb_percentage">
+            {% for v in [0,10,20,30,40,50,60,70] %}
+              <option value="{{v}}" {{ 'selected' if ncb==v|string else '' }}>{{v}}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Claims (Last Year)</label>
+          <input class="form-control" type="number" min="0" max="10" step="1"
+                 name="num_claims_within_1_year" value="{{ form.get('num_claims_within_1_year','0') }}">
+        </div>
+      </div>
+
+      <hr class="my-3"/>
+
+      <!-- VEHICLE -->
+      <h6 class="mb-2"><i class="bi bi-car-front me-2"></i>Vehicle Details</h6>
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Vehicle Type</label>
+          {% set vt = form.get('vehicle_type','Car') %}
+          <select class="form-select" name="vehicle_type">
+            {% for v in ['Car','SUV','Van','Truck','Motorcycle','Three-Wheeler','Bus'] %}
+              <option {{ 'selected' if vt==v else '' }}>{{v}}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Vehicle Segment</label>
+          {% set vs = form.get('vehicle_segment','Sedan') %}
+          <select class="form-select" name="vehicle_segment">
+            {% for v in ['Sedan','Hatchback','Wagon','Pickup','MPV','Other'] %}
+              <option {{ 'selected' if vs==v else '' }}>{{v}}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Engine Capacity (cc)</label>
+          <input class="form-control" type="number" min="50" max="8000" step="10"
+                 name="engine_capacity_cc" value="{{ form.get('engine_capacity_cc','1500') }}">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Fuel Type</label>
+          {% set ft = form.get('fuel_type','Petrol') %}
+          <select class="form-select" name="fuel_type">
+            {% for v in ['Petrol','Diesel','Hybrid','Electric','Other'] %}
+              <option {{ 'selected' if ft==v else '' }}>{{v}}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Vehicle Age (Years)</label>
+          <input class="form-control" type="number" min="0" max="60" step="1"
+                 name="vehicle_age_years" value="{{ form.get('vehicle_age_years','8') }}">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Usage Type</label>
+          {% set ut = form.get('vehicle_usage_type','Private') %}
+          <select class="form-select" name="vehicle_usage_type">
+            {% for v in ['Private','Business','Rent','Taxi','School','Other'] %}
+              <option {{ 'selected' if ut==v else '' }}>{{v}}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Registration District</label>
+          {% set rd = form.get('registration_district','Colombo') %}
+          <select class="form-select" name="registration_district">
+            {% for v in ['Colombo','Gampaha','Kalutara','Kandy','Galle','Matara','Jaffna','Other'] %}
+              <option {{ 'selected' if rd==v else '' }}>{{v}}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Parking Type</label>
+          {% set pt = form.get('parking_type','Garage') %}
+          <select class="form-select" name="parking_type">
+            {% for v in ['Garage','Street','Car Park','Other'] %}
+              <option {{ 'selected' if pt==v else '' }}>{{v}}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">LPG Conversion</label>
+          {% set lpg = form.get('has_lpg_conversion','0') %}
+          <select class="form-select" name="has_lpg_conversion">
+            <option value="0" {{ 'selected' if lpg=='0' else '' }}>No</option>
+            <option value="1" {{ 'selected' if lpg=='1' else '' }}>Yes</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end mt-4">
+        <button class="btn btn-primary px-4">
+          <i class="bi bi-lightning-charge me-2"></i>Generate Risk & Premium
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- RIGHT -->
+  <aside class="content-right">
+    <div class="card soft-card p-3 mb-3">
+      <h6 class="mb-2">Result</h6>
+
+      {% if errors and not errors.get("model") %}
+        <div class="alert alert-warning mb-0">
+          Please correct the highlighted fields.
+        </div>
+
+      {% elif result %}
+        {% set risk_pct = (result["risk_probability"] * 100.0) %}
+        {% set level = result["risk_label"] %}
+        <div class="risk-hero risk-{{ level|lower }}">
+          <div class="risk-hero-big">{{ "%.2f"|format(risk_pct) }}%</div>
+          <div class="risk-hero-pill">{{ level }} RISK</div>
+        </div>
+
+        <div class="mt-2 text-muted small">
+          Customer: <b>{{ result.customer.full_name }}</b><br/>
+          NIC: <b>{{ result.customer.nic }}</b>
+        </div>
+
+        <hr/>
+
+{% if premium %}
+  <div class="meta-label">Total Payable</div>
+  <div class="payable">
+    LKR {{ premium["total_payable"] | default(0) | round(2) }}
+  </div>
+
+  <div class="mt-2 small text-muted">
+    Base: LKR {{ premium["base_premium"] | default(0) | round(2) }}<br/>
+
+    Risk Loading:
+    {{ premium["risk_loading_percent"] | default(0) }}%
+    (LKR {{ premium["risk_loading_amount"] | default(0) | round(2) }})<br/>
+
+    Discounts:
+    LKR {{ premium["total_discount"] | default(0) | round(2) }}<br/>
+
+    VAT:
+    LKR {{ premium["vat_amount"] | default(0) | round(2) }}
+  </div>
+{% endif %}
+
+
+
+        <hr/>
+
+        <button class="btn btn-outline-secondary w-100" type="button" data-bs-toggle="collapse" data-bs-target="#modelDetails">
+          Model Details (optional)
+        </button>
+        <div class="collapse mt-2" id="modelDetails">
+          <div class="small text-muted">
+            EBM: {{ "%.2f"|format(result["ebm_probability"]*100) }}%<br/>
+            NGBoost: {{ "%.2f"|format(result["ngboost_probability"]*100) }}%
+          </div>
+        </div>
+
+      {% else %}
+        <div class="text-muted">Fill the form and click <b>Generate Risk & Premium</b>.</div>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const MIN_LICENSE_AGE = 18;
+  const ageEl = document.getElementById("driver_age");
+  const expEl = document.getElementById("driving_exp");
+  const helpEl = document.getElementById("exp_help");
+
+  function updateExpLimit(){
+    const age = parseInt(ageEl.value || "18", 10);
+    const maxExp = Math.max(age - MIN_LICENSE_AGE, 0);
+    expEl.max = String(maxExp);
+
+    let exp = parseInt(expEl.value || "0", 10);
+    if (exp > maxExp) expEl.value = String(maxExp);
+
+    helpEl.textContent = `Max allowed = ${maxExp} (Age ${age} - ${MIN_LICENSE_AGE})`;
+  }
+
+  ageEl.addEventListener("input", updateExpLimit);
+  expEl.addEventListener("input", updateExpLimit);
+  updateExpLimit();
+})();
+</script>
+{% endblock %}
